@@ -8,6 +8,15 @@ st.set_page_config(page_title="Chat with your PDF")
 st.title("📄 Chat with your PDF (Gemini RAG)")
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+CHAT_MODEL = "gemini-3.1-flash-lite"  # fastest current Gemini model
+
+
+@st.cache_resource
+def get_client():
+    return genai.Client(api_key=GEMINI_API_KEY)
+
+
+client = get_client()
 
 
 def chunk_text(text, size=1200):
@@ -30,7 +39,6 @@ if "chunks" not in st.session_state:
     pdf_file = st.file_uploader("Upload a PDF to start chatting with it", type="pdf")
 
     if pdf_file:
-        client = genai.Client(api_key=GEMINI_API_KEY)
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         chunks = chunk_text(text)
@@ -52,7 +60,6 @@ else:
     question = st.chat_input("Ask something about the PDF...")
 
     if question:
-        client = genai.Client(api_key=GEMINI_API_KEY)
         st.session_state.messages.append({"role": "user", "content": question})
         st.chat_message("user").write(question)
 
@@ -69,9 +76,13 @@ else:
         )
 
         with st.chat_message("assistant"):
-            response = client.models.generate_content(
-                model="gemini-3.5-flash", contents=prompt
+            stream = client.models.generate_content_stream(
+                model=CHAT_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_level="minimal")
+                ),
             )
-            st.write(response.text)
+            answer = st.write_stream(chunk.text for chunk in stream if chunk.text)
 
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+        st.session_state.messages.append({"role": "assistant", "content": answer})
