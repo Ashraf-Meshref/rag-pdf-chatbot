@@ -1,5 +1,3 @@
-# pip install streamlit google-genai pypdf numpy
-# run: streamlit run app.py
 import streamlit as st
 import numpy as np
 from google import genai
@@ -10,7 +8,6 @@ st.set_page_config(page_title="Chat with your PDF")
 st.title("📄 Chat with your PDF (Gemini RAG)")
 
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-pdf_file = st.sidebar.file_uploader("Upload a PDF", type="pdf")
 
 
 def chunk_text(text, size=1200):
@@ -27,29 +24,34 @@ def embed(client, texts, query=False):
     return np.array([e.values for e in result.embeddings])
 
 
-if not pdf_file:
-    st.info("Upload a PDF in the sidebar to start chatting with it.")
-
-if pdf_file and "chunks" not in st.session_state:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    reader = PdfReader(pdf_file)
-    text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    chunks = chunk_text(text)
-    with st.spinner("Reading and indexing PDF..."):
-        st.session_state.chunks = chunks
-        st.session_state.embeddings = embed(client, chunks)
-    st.sidebar.success(f"Indexed {len(chunks)} chunks ✅")
-
 st.session_state.setdefault("messages", [])
-for m in st.session_state.messages:
-    st.chat_message(m["role"]).write(m["content"])
 
-question = st.chat_input("Ask something about the PDF...")
+if "chunks" not in st.session_state:
+    pdf_file = st.file_uploader("Upload a PDF to start chatting with it", type="pdf")
 
-if question:
-    if "embeddings" not in st.session_state:
-        st.warning("Please upload a PDF first.")
-    else:
+    if pdf_file:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        reader = PdfReader(pdf_file)
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        chunks = chunk_text(text)
+        with st.spinner("Reading and indexing PDF..."):
+            st.session_state.chunks = chunks
+            st.session_state.embeddings = embed(client, chunks)
+        st.rerun()
+
+else:
+    st.caption(f"📚 {len(st.session_state.chunks)} chunks indexed. ")
+    if st.button("Upload a different PDF"):
+        for key in ("chunks", "embeddings", "messages"):
+            st.session_state.pop(key, None)
+        st.rerun()
+
+    for m in st.session_state.messages:
+        st.chat_message(m["role"]).write(m["content"])
+
+    question = st.chat_input("Ask something about the PDF...")
+
+    if question:
         client = genai.Client(api_key=GEMINI_API_KEY)
         st.session_state.messages.append({"role": "user", "content": question})
         st.chat_message("user").write(question)
